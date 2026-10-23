@@ -1,0 +1,14 @@
+# Holds WiFi credentials — never commit. The board is provisioned from these
+# over serial, so they exist only in the shell and in the board's NVS.
+.envrc
+.direnv/
+
+# Python bytecode, which appears wherever tools/ or server/ has been run.
+__pycache__/
+*.py[cod]
+
+# Editors and desktops
+.vscode/
+.idea/
+*.swp
+.DS_Store

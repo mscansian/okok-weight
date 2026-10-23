@@ -1,0 +1,20 @@
+services:
+  server:
+    build: .
+    # The weigh-in history lives on the host, so it outlives the image and any
+    # sqlite3 client can read it without going through the container.
+    volumes:
+      - ${SCALE_DATA_DIR:-./data}:/data
+    # A bind mount keeps the host's ownership, so the process has to run as the
+    # user that owns the directory rather than as the image's own. Guessing that
+    # user would write the database as somebody else and fail later, somewhere
+    # less obvious than here.
+    # UID and GID themselves are readonly in bash, hence the prefix.
+    user: "${SCALE_UID:?set SCALE_UID and SCALE_GID, from id -u and id -g}:${SCALE_GID:?set SCALE_UID and SCALE_GID, from id -u and id -g}"
+    environment:
+      # The same secret the board was provisioned with. Unset, the server would
+      # start with no way to tell its gateway from anything else on the network.
+      SCALE_GATEWAY_KEY: ${SCALE_GATEWAY_KEY:?set SCALE_GATEWAY_KEY to the key the gateway signs with}
+    ports:
+      - ${SCALE_PORT:-8080}:8080
+    restart: unless-stopped

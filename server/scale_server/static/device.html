@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>gateway &mdash; okok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=__ASSETS__">
+<script src="/static/format.js?v=__ASSETS__"></script>
+<script src="/static/device.js?v=__ASSETS__"></script>
+<script defer src="/static/vendor/alpine.min.js?v=__ASSETS__"></script>
+</head>
+<body>
+
+<main class="app is-technical" x-data="gateway" x-cloak>
+
+  <nav class="topbar">
+    <a class="tab" href="/devices">&larr; gateways</a>
+    <span class="grow"></span>
+    <code class="board-mac" x-text="address"></code>
+  </nav>
+
+  <div class="alert" x-show="problem" x-transition.opacity role="alert">
+    <p x-text="problem"></p>
+    <button type="button" @click="problem = null" aria-label="dismiss">&times;</button>
+  </div>
+
+  <p class="blank" x-show="missing">
+    No board has ever pinged from this address. A gateway puts itself here the
+    first time it reports, so there is nothing to register by hand.
+  </p>
+
+  <template x-if="device">
+    <header class="rig-intro">
+      <h1 x-text="device.name || address"></h1>
+      <p>
+        Everything this board has said about itself. The panel below holds its
+        last ping; the runs and the table hold the ones before it, which is
+        where a board that stops and comes back leaves its only trace.
+      </p>
+    </header>
+  </template>
+
+  <!-- The centrepiece. A board that restarts raises exactly one question — how
+       long it lasts and how each run ended — and neither is answerable from a
+       single ping. -->
+  <template x-if="device && runs.length">
+    <section class="card">
+      <div class="card-head">
+        <h2>runs</h2>
+        <span class="grow"></span>
+        <span class="rig-count">
+          <span x-text="runs.length"></span> ended,
+          <span :class="brownoutRuns ? 'is-flag' : ''" x-text="brownoutRuns"></span> to brownout
+        </span>
+      </div>
+
+      <dl class="telemetry">
+        <div>
+          <dt>running for</dt>
+          <dd class="is-ok" x-text="duration(device.uptime_ms)"></dd>
+        </div>
+        <div>
+          <dt>typical run</dt>
+          <dd x-text="duration(medianRunMs)"></dd>
+        </div>
+        <div>
+          <dt>last run</dt>
+          <dd x-text="duration(runs[0].lastedMs)"></dd>
+        </div>
+      </dl>
+
+      <ol class="runs">
+        <template x-for="(run, index) in runs" :key="index">
+          <li :class="run.reason === 'brownout' ? 'is-bad' : ''">
+            <span class="run-length">
+              <span x-show="run.atLeast" class="raw">&ge;&nbsp;</span><span x-text="duration(run.lastedMs)"></span>
+            </span>
+            <span class="run-reason" x-text="run.reason"></span>
+            <span class="grow"></span>
+            <span class="run-when" :title="full(run.endedAt)" x-text="ago(run.endedAt)"></span>
+          </li>
+        </template>
+      </ol>
+      <p class="note">
+        A run marked &ge; was one the board could not time for itself, so it is
+        measured from its last ping and is only ever short of the truth.
+      </p>
+    </section>
+  </template>
+
+  <template x-if="device">
+    <section class="card">
+      <div class="card-head">
+        <h2>last ping</h2>
+        <span class="grow"></span>
+        <span class="pip" :class="device.online ? '' : 'is-out'"></span>
+        <span :class="device.online ? 'is-ok' : 'is-flag'"
+              x-text="device.online ? 'online' : 'silent'"></span>
+      </div>
+
+      <dl class="telemetry">
+        <div><dt>last_seen</dt>
+          <dd :title="full(device.last_seen_at)" x-text="ago(device.last_seen_at)"></dd></div>
+        <div><dt>first_seen</dt>
+          <dd :title="full(device.first_seen_at)" x-text="ago(device.first_seen_at)"></dd></div>
+        <div><dt>uptime_ms</dt>
+          <dd><span x-text="duration(device.uptime_ms)"></span>
+            <span class="raw" x-text="device.uptime_ms.toLocaleString()"></span></dd></div>
+        <div><dt>previous_uptime_ms</dt>
+          <dd><span x-text="duration(device.previous_uptime_ms)"></span>
+            <span class="raw" x-show="device.previous_uptime_ms !== null"
+                  x-text="device.previous_uptime_ms?.toLocaleString() ?? ''"></span></dd></div>
+        <div><dt>reset_reason</dt>
+          <dd :class="device.reset_reason === 'brownout' ? 'is-flag' : ''"
+              x-text="device.reset_reason"></dd></div>
+        <div><dt>boots / brownouts</dt>
+          <dd><span x-text="device.boots"></span><span class="raw">/</span>
+            <span :class="device.brownouts ? 'is-flag' : ''" x-text="device.brownouts"></span></dd></div>
+        <!-- Every reconnection owes the server a ping, so churn here is extra
+             traffic and extra current as well as a worse link. -->
+        <div><dt>wifi_disconnects</dt>
+          <dd :class="device.wifi_disconnects ? 'is-flag' : ''"
+              x-text="device.wifi_disconnects"></dd></div>
+        <div><dt>last drop</dt>
+          <dd x-text="disconnectReason(device.wifi_disconnect_reason)"></dd></div>
+        <div><dt>free_heap</dt>
+          <dd><span x-text="kb(device.free_heap)"></span>
+            <span class="raw" x-text="rawBytes(device.free_heap)"></span></dd></div>
+        <!-- A POST needs its share of the heap in one piece. -->
+        <div><dt>largest_free_block</dt>
+          <dd><span x-text="kb(device.largest_free_block)"></span>
+            <span class="raw" x-text="rawBytes(device.largest_free_block)"></span></dd></div>
+        <!-- The floor it reached, which the reading above cannot show once
+             whatever caused it has given the memory back. -->
+        <div><dt>min_free_heap</dt>
+          <dd><span x-text="kb(device.min_free_heap)"></span></dd></div>
+        <div><dt>ssid / rssi</dt>
+          <dd><span x-text="device.ssid || 'unknown'"></span>
+            <span class="raw" x-show="device.wifi_rssi !== null"
+                  x-text="device.wifi_rssi + ' dBm'"></span></dd></div>
+        <div><dt>scale_addresses</dt>
+          <dd :class="device.scale_addresses?.length ? '' : 'is-flag'"
+              x-text="device.scale_addresses?.length ? device.scale_addresses.join(' ') : 'unset'"></dd></div>
+        <div><dt>queued</dt>
+          <dd :class="device.queued ? 'is-flag' : ''" x-text="device.queued"></dd></div>
+        <div><dt>client_ip</dt><dd x-text="device.client_ip || 'unknown'"></dd></div>
+        <div><dt>interval_ms</dt>
+          <dd><span x-text="duration(device.interval_ms)"></span></dd></div>
+        <div><dt>firmware_version</dt><dd x-text="device.firmware_version"></dd></div>
+        <div><dt>cpu / xtal</dt>
+          <dd><span x-text="(device.cpu_mhz ?? '—') + ' MHz'"></span>
+            <span class="raw" x-text="(device.xtal_mhz ?? '—') + ' MHz xtal'"></span></dd></div>
+      </dl>
+    </section>
+  </template>
+
+  <!-- Three lines over the pings held. A brownout leaves nothing in the ping
+       that follows it, so what there is to see is whichever of these was
+       drifting in the ones before. -->
+  <template x-if="trends.length">
+    <section class="card">
+      <div class="card-head">
+        <h2>trend</h2>
+        <span class="grow"></span>
+        <span class="rig-count"><span x-text="pings.length"></span> pings held</span>
+      </div>
+
+      <div class="trends">
+        <template x-for="line in trends" :key="line.field">
+          <figure class="trend" x-data="{ reading: null }">
+            <figcaption>
+              <span x-text="line.label"></span>
+              <span class="raw" x-text="reading
+                ? line.format(reading.value) + ' \u00b7 ' + stamp(reading.at)
+                : line.format(device?.[line.field])"></span>
+            </figcaption>
+
+            <div class="trend-plot">
+              <!-- The range the line was fitted to. Without it the shape of a
+                   heap that drifted 16 KB and one that jittered 20 bytes is the
+                   same picture. -->
+              <div class="trend-bounds" aria-hidden="true">
+                <span class="is-high" x-text="line.format(line.high)"></span>
+                <span class="is-low" x-text="line.format(line.low)"></span>
+              </div>
+
+              <div class="trend-area">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline :points="line.polyline"></polyline>
+                </svg>
+                <span class="trend-mark" aria-hidden="true" x-show="reading"
+                      :style="reading ? 'left: ' + reading.left + '%; top: ' + reading.top + '%' : ''"></span>
+                <div class="trend-hit"
+                     @pointermove="reading = nearestSample(line.points, $event)"
+                     @pointerleave="reading = null"></div>
+              </div>
+            </div>
+          </figure>
+        </template>
+      </div>
+      <p class="note">
+        Oldest at the left, from <span x-text="stamp(pings.at(-1).recorded_at)"></span>.
+        Each line is scaled between the two figures beside it, so the shape is
+        the reading and the height is not. Hover one to read a single point.
+      </p>
+    </section>
+  </template>
+
+  <template x-if="pings.length">
+    <section class="card">
+      <div class="card-head">
+        <h2>pings</h2>
+      </div>
+      <div class="scroller">
+        <table class="pings">
+          <thead>
+            <tr>
+              <th>when</th><th>uptime</th><th>reset</th><th>heap</th>
+              <th>min</th><th>drops</th><th>rssi</th><th>q</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(ping, index) in pings" :key="index">
+              <tr :class="ping.uptime_ms < ping.interval_ms ? 'is-boot' : ''">
+                <td :title="full(ping.recorded_at)" x-text="stamp(ping.recorded_at)"></td>
+                <td x-text="duration(ping.uptime_ms)"></td>
+                <td :class="ping.reset_reason === 'brownout' ? 'is-flag' : ''"
+                    x-text="ping.reset_reason"></td>
+                <td x-text="kb(ping.free_heap)"></td>
+                <td x-text="kb(ping.min_free_heap)"></td>
+                <td :class="ping.wifi_disconnects ? 'is-flag' : ''" x-text="ping.wifi_disconnects"></td>
+                <td x-text="ping.wifi_rssi ?? '—'"></td>
+                <td :class="ping.queued ? 'is-flag' : ''" x-text="ping.queued"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">A highlighted row is the first ping of a run &mdash; the board reporting in before its interval had come round once.</p>
+    </section>
+  </template>
+
+  <footer class="foot">
+    <span x-show="loading">loading&hellip;</span>
+    <span x-show="!loading" x-text="'updated ' + stamp(checkedAt)"></span>
+    <a class="quiet" href="/docs">api</a>
+  </footer>
+
+</main>
+</body>
+</html>

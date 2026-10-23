@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>okok weight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=__ASSETS__">
+<script src="/static/format.js?v=__ASSETS__"></script>
+<script src="/static/weight.js?v=__ASSETS__"></script>
+<script defer src="/static/vendor/alpine.min.js?v=__ASSETS__"></script>
+</head>
+<body>
+
+<main class="app" x-data="weight" x-cloak>
+
+  <nav class="topbar">
+    <span class="mark">okok</span>
+    <span class="grow"></span>
+    <!-- A board gone quiet is why the weigh-in below may be older than the last
+         one taken, which is the whole of what the hardware is doing on this page. -->
+    <a class="tab" href="/devices" :class="{'has-warning': silent}">
+      <span class="beat" :class="{'is-on': reporting}"></span>
+      <span x-show="!silent">gateways</span>
+      <span x-show="silent">
+        <span x-text="silent"></span> gateway<span x-show="silent !== 1">s</span> silent
+      </span>
+    </a>
+  </nav>
+
+  <!-- Anything the page could not do has to show up here, since this page is
+       the only place anyone would see it. -->
+  <div class="alert" x-show="problem" x-transition.opacity role="alert">
+    <p x-text="problem"></p>
+    <button type="button" @click="problem = null" aria-label="dismiss">&times;</button>
+  </div>
+
+  <section class="now" x-show="latest">
+    <p class="now-label">last weigh-in</p>
+    <p class="now-figure">
+      <span class="now-weight" x-text="latest && latest.weight_kg.toFixed(2)"></span>
+      <span class="now-unit">kg</span>
+    </p>
+
+    <p class="now-meta">
+      <span class="delta" x-show="change !== null">
+        <span x-text="change > 0 ? '&#9650;' : (change < 0 ? '&#9660;' : '=')"></span>
+        <span x-text="Math.abs(change ?? 0).toFixed(2) + ' kg'"></span>
+      </span>
+      <span class="now-when" x-text="latest && ago(latest.measured_at)"></span>
+    </p>
+  </section>
+
+  <section class="now is-empty" x-show="!latest && !loading">
+    <p class="now-label">no weigh-ins yet</p>
+    <p class="now-figure"><span class="now-weight">--.--</span><span class="now-unit">kg</span></p>
+    <p class="now-meta">
+      <span class="now-when">step on the scale &mdash; it posts a few seconds after you settle</span>
+    </p>
+  </section>
+
+  <section class="card chart" x-show="readings.length > 1">
+    <header class="card-head">
+      <h2>over time</h2>
+      <div class="spans">
+        <template x-for="option in spans" :key="option.days">
+          <button type="button" :class="{'is-on': span === option.days}"
+                  @click="span = option.days" x-text="option.label"></button>
+        </template>
+      </div>
+    </header>
+
+    <figure class="plot" x-show="chart.count > 1" x-data="{ held: null }">
+      <div class="plot-area">
+        <svg viewBox="0 0 720 220" aria-hidden="true">
+          <defs>
+            <linearGradient id="week-fade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" class="week-top"></stop>
+              <stop offset="100%" class="week-bottom"></stop>
+            </linearGradient>
+          </defs>
+          <!-- The weekly average runs behind the weigh-ins in its own colour:
+               the same weights, with a heavy dinner averaged out of them. -->
+          <path class="plot-week-fill" :d="chart.weekFill" fill="url(#week-fade)"></path>
+          <path class="plot-week" :d="chart.weekEdge"></path>
+          <!-- The mean of what is on screen, so a run of weigh-ins reads against
+               something rather than only against its own ends. -->
+          <line class="plot-mean" x1="0" :y1="chart.meanY" x2="720" :y2="chart.meanY"></line>
+          <path class="plot-line" :d="chart.line"></path>
+          <path class="plot-dot" :d="chart.dots"></path>
+        </svg>
+
+        <!-- One weigh-in read off the plot. A finger has to hold to scrub, so
+             the touch gesture and the mouse hover are the same pointer handlers;
+             the hit layer keeps vertical drags for the page to scroll with. -->
+        <template x-if="held">
+          <div class="plot-hover" aria-hidden="true">
+            <div class="plot-cursor" :style="'left: ' + held.left + '%'">
+              <span class="cursor-mark" :style="'top: ' + held.top + '%'"></span>
+            </div>
+          </div>
+        </template>
+
+        <div class="plot-hit"
+             @pointerdown="held = nearestPoint(chart.points, $event);
+                           $event.currentTarget.setPointerCapture($event.pointerId)"
+             @pointermove="held = nearestPoint(chart.points, $event)"
+             @pointerup="held = null"
+             @pointercancel="held = null"
+             @pointerleave="held = null"></div>
+      </div>
+
+      <div class="plot-axis" aria-hidden="true">
+        <span class="axis-high" x-text="chart.high.toFixed(1)"></span>
+        <span class="axis-mean" :style="'top: ' + chart.meanPct + '%'"
+              x-text="chart.mean.toFixed(1)"></span>
+        <span class="axis-low" x-text="chart.low.toFixed(1)"></span>
+      </div>
+
+      <p class="plot-key" aria-hidden="true">
+        <span><i class="key-line"></i>every weigh-in</span>
+        <span><i class="key-band"></i>weekly average</span>
+      </p>
+
+      <!-- The weigh-in being pointed at reads here rather than beside the
+           pointer: on a phone the pointer is a finger, and a label under it is
+           a label nobody can see. -->
+      <figcaption>
+        <span x-text="chart.from"></span>
+        <span class="plot-swing" x-show="!held && chart.swing !== null"
+              x-text="(chart.swing > 0 ? '+' : '') + (chart.swing ?? 0).toFixed(2) + ' kg across this span'"></span>
+        <span class="plot-held" x-show="held"
+              x-text="held ? held.weight.toFixed(2) + ' kg \u00b7 ' + stamp(held.at) : ''"></span>
+        <span x-text="chart.to"></span>
+      </figcaption>
+    </figure>
+
+    <p class="blank" x-show="chart.count < 2">
+      Only <span x-text="chart.count"></span> weigh-in in this span &mdash; not enough
+      to draw a line through.
+    </p>
+  </section>
+
+  <section class="card">
+    <header class="card-head">
+      <h2>history</h2>
+      <p class="range" x-show="readings.length">
+        <span x-text="readings.length"></span> of <span x-text="total"></span>
+      </p>
+    </header>
+
+    <ol class="log">
+      <template x-for="(reading, i) in readings" :key="reading.id">
+        <li>
+          <span class="log-weight" x-text="reading.weight_kg.toFixed(2)"></span>
+          <span class="log-step" x-show="step(i) !== null"
+                x-text="(step(i) > 0 ? '+' : '') + (step(i) ?? 0).toFixed(2)"></span>
+          <span class="grow"></span>
+
+          <!-- The exact moment, and how long the gateway sat on it, live here
+               rather than in the row: worth having when asked for, noise on
+               every line when it is not. -->
+          <span class="when" :class="{'was-held': lag(reading)}" tabindex="0">
+            <span x-text="stamp(reading.measured_at)"></span>
+            <span class="tip" role="tooltip">
+              <span class="tip-row">
+                <span class="tip-key">weighed</span>
+                <span x-text="full(reading.measured_at)"></span>
+              </span>
+              <template x-if="lag(reading)">
+                <span class="tip-row">
+                  <span class="tip-key">delivered</span>
+                  <span>
+                    <span x-text="full(reading.recorded_at)"></span>
+                    <em x-text="'held ' + lag(reading)"></em>
+                  </span>
+                </span>
+              </template>
+            </span>
+          </span>
+        </li>
+      </template>
+    </ol>
+
+    <p class="blank" x-show="!loading && !readings.length">
+      Nothing weighed yet. This page looks again every half minute.
+    </p>
+
+    <button type="button" class="more" x-show="readings.length && readings.length < total"
+            @click="more()" :disabled="fetching"
+            x-text="fetching ? 'loading&hellip;' : 'show older'"></button>
+  </section>
+
+  <footer class="foot">
+    <span x-show="loading">loading&hellip;</span>
+    <span x-show="!loading" x-text="'updated ' + stamp(checkedAt)"></span>
+    <a class="quiet" href="/docs">api</a>
+  </footer>
+
+</main>
+</body>
+</html>

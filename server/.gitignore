@@ -1,0 +1,15 @@
+# The uv-managed virtualenv for this project.
+.venv/
+
+# The weigh-in database and its WAL sidecars, wherever SCALE_DB_PATH points here.
+*.db
+*.db-wal
+*.db-shm
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# The bind-mounted database directory, and the UID/GID compose reads from here.
+data/
+.env

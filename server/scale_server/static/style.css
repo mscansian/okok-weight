@@ -1,0 +1,928 @@
+/* Two registers on one page. The weight is for whoever stood on the scale, so
+   it reads like a fitness app: big figures, a trend, one bright accent. The
+   gateway panel is for whoever has to fix a board, so it reads like telemetry:
+   monospace, dense, raw values next to human ones. */
+
+:root {
+  --bg: #0b0d10;
+  --card: #14181d;
+  --well: #1a1f26;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-firm: rgba(255, 255, 255, 0.14);
+  --text: #eef2f7;
+  --dim: #7e8896;
+  --dimmer: #5a6473;
+  --accent: #ccff33;
+  /* The weekly average is a second series, not a shadow of the first, so it
+     gets a hue of its own — cool against the lime, which keeps the two apart
+     at a glance and for a red-green reader. */
+  --week: #56b8ff;
+  --flag: #ff6b5c;
+  --ok: #4ade80;
+
+  --sans: 'Archivo', 'Helvetica Neue', Helvetica, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius: 16px;
+  --gap: 14px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+[x-cloak] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(204, 255, 51, 0.07), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-variation-settings: 'wdth' 100;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 22px 18px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.grow { flex: 1; }
+
+/* Each section arrives a beat after the one above it, once, on load. */
+.app > * {
+  animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.app > *:nth-child(1) { animation-delay: 0.02s; }
+.app > *:nth-child(2) { animation-delay: 0.06s; }
+.app > *:nth-child(3) { animation-delay: 0.10s; }
+.app > *:nth-child(4) { animation-delay: 0.14s; }
+.app > *:nth-child(5) { animation-delay: 0.18s; }
+.app > *:nth-child(6) { animation-delay: 0.22s; }
+.app > *:nth-child(7) { animation-delay: 0.26s; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app > * { animation: none; }
+}
+
+/* ─────────────  chrome  ───────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 6px;
+}
+
+.mark {
+  font-weight: 800;
+  font-variation-settings: 'wdth' 118;
+  letter-spacing: -0.02em;
+  font-size: 1.05rem;
+}
+
+/* Lit while some gateway is still reporting. */
+.beat {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dimmer);
+}
+.beat.is-on {
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(204, 255, 51, 0.5);
+  animation: pulse 2.4s ease-out infinite;
+}
+@keyframes pulse {
+  70%, 100% { box-shadow: 0 0 0 7px rgba(204, 255, 51, 0); }
+}
+
+/* The way between the two pages, and on the weight page a warning when a board
+   has stopped reporting. */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.tab:hover { color: var(--text); border-color: var(--line-firm); }
+.tab.has-warning {
+  color: var(--flag);
+  border-color: rgba(255, 107, 92, 0.35);
+  background: rgba(255, 107, 92, 0.07);
+}
+
+a.quiet, .quiet {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+a.quiet:hover { color: var(--text); }
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 107, 92, 0.32);
+  border-radius: var(--radius);
+  background: rgba(255, 107, 92, 0.08);
+  color: #ffcfc9;
+  font-size: 0.88rem;
+}
+.alert p { margin: 0; flex: 1; }
+.alert button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+/* ─────────────  the weight  ───────────── */
+
+.now {
+  position: relative;
+  padding: 30px 24px 26px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    radial-gradient(80% 120% at 50% 0%, rgba(204, 255, 51, 0.10), transparent 70%),
+    var(--card);
+  text-align: center;
+  overflow: hidden;
+}
+
+.now-label {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.now-figure {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.now-weight {
+  font-size: clamp(4.2rem, 19vw, 7.5rem);
+  font-weight: 800;
+  font-variation-settings: 'wdth' 122;
+  letter-spacing: -0.045em;
+  line-height: 0.92;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--text) 30%, #a9b4c2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.now-unit {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.now-meta {
+  margin: 14px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Direction is the arrow's job, not the colour's — this page has no idea
+   which way you meant to go. */
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--well);
+  border: 1px solid var(--line-firm);
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.delta.is-flat { color: var(--dim); }
+
+.now-when { color: var(--dim); font-size: 0.86rem; }
+
+.now.is-empty .now-weight {
+  background: none;
+  color: var(--dimmer);
+  -webkit-text-fill-color: currentColor;
+}
+
+/* ─────────────  cards  ───────────── */
+
+.card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.card-head h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.range {
+  margin: 0;
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.blank {
+  margin: 4px 0 0;
+  color: var(--dim);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+/* ─────────────  the chart  ───────────── */
+
+.spans {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--well);
+}
+.spans button {
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.spans button.is-on {
+  background: var(--accent);
+  color: #14180a;
+}
+
+.plot {
+  position: relative;
+  margin: 0;
+  padding-left: 42px;
+}
+
+.plot-area { position: relative; }
+
+.plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* A horizontal drag reads the plot; a vertical one still scrolls the page,
+   which is the only way a chart this tall can be scrubbed on a phone. */
+.plot-hit {
+  position: absolute;
+  inset: 0;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+
+.plot-hover {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.plot-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-firm);
+}
+
+.cursor-mark {
+  position: absolute;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%);
+}
+
+
+/* A hundred weigh-ins is a jagged line, so it is drawn thin: heavy enough to
+   follow a point at a time, light enough to read the week through it. */
+.plot-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plot-week {
+  fill: none;
+  stroke: var(--week);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plot-week-fill { stroke: none; }
+.week-top { stop-color: rgba(86, 184, 255, 0.28); }
+.week-bottom { stop-color: rgba(86, 184, 255, 0.02); }
+
+.plot-dot {
+  fill: var(--card);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.plot-mean {
+  stroke: var(--line-firm);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+/* Positioned against the plot's own coordinate space, so the mean label sits
+   on the mean line rather than near it. */
+.plot-axis {
+  position: absolute;
+  inset: 0;
+  left: 0;
+  width: 38px;
+  pointer-events: none;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--dimmer);
+  font-variant-numeric: tabular-nums;
+}
+.plot-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+.axis-high { top: 11.8%; }
+.axis-low { top: 88.2%; }
+.axis-mean { color: var(--dim); }
+
+.plot figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--dimmer);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two series on one plot only works if the plot says which is which. */
+.plot-key {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin: 10px 0 0;
+  color: var(--dimmer);
+  font-size: 0.72rem;
+}
+.plot-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.plot-key i {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.plot-key .key-band {
+  height: 9px;
+  border-radius: 2px;
+  background: rgba(86, 184, 255, 0.28);
+  border-top: 2px solid var(--week);
+}
+
+.plot-swing {
+  color: var(--dim);
+  font-weight: 600;
+}
+
+/* Brighter than the span it stands in for, because it is the live one. */
+.plot-held {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ─────────────  the history  ───────────── */
+
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.log li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.log li:last-child { border-bottom: 0; }
+
+.log-weight {
+  font-size: 1.16rem;
+  font-weight: 700;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  min-width: 4.2ch;
+}
+
+.log-step {
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--well);
+}
+
+.when {
+  position: relative;
+  color: var(--dim);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  border-radius: 4px;
+}
+.when:hover, .when:focus-visible { color: var(--text); outline: none; }
+
+/* A weigh-in the gateway had to hold is worth noticing without being read, so
+   the date carries a mark and the detail waits for a hover. */
+.when.was-held { border-bottom: 1px dotted var(--dimmer); }
+
+.tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 5px;
+  min-width: max-content;
+  padding: 9px 11px;
+  border: 1px solid var(--line-firm);
+  border-radius: 9px;
+  background: #05070a;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--text);
+  text-align: left;
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.when:hover .tip, .when:focus-visible .tip {
+  opacity: 1;
+  transform: none;
+}
+
+.tip-row { display: flex; gap: 10px; justify-content: space-between; }
+.tip-key { color: var(--dimmer); }
+.tip em { font-style: normal; color: var(--accent); margin-left: 6px; }
+
+.more {
+  margin-top: 14px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line-firm);
+  border-radius: 11px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.more:hover:not(:disabled) { background: var(--well); }
+.more:disabled { color: var(--dim); cursor: default; }
+
+/* ─────────────  the boards  ───────────── */
+
+/* The technical page drops the weight page's glow: nothing here is a figure to
+   admire, it is a board to diagnose. */
+.app.is-technical { gap: 10px; }
+
+.rig-intro { padding: 4px 4px 8px; }
+.rig-intro h1 {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.rig-intro p {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--dim);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.rig-count {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.board {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+.board.is-dark { opacity: 0.72; }
+
+.board-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  background: var(--well);
+  border-bottom: 1px solid var(--line);
+}
+
+.pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dimmer);
+  flex: none;
+}
+.board.is-live .pip { background: var(--ok); }
+
+.board-name {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+.board-name:hover { border-bottom-color: var(--line-firm); }
+.board-name .is-unnamed { color: var(--dim); font-weight: 500; font-style: italic; }
+
+.board-mac {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--dimmer);
+}
+
+.board-seen {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+
+.rename {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.rename input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--line-firm);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+.rename input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.rename button {
+  border: 1px solid var(--line-firm);
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.rename button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #14180a;
+}
+.rename button.quiet { border-color: transparent; }
+
+/* The nerdy half: field names as the API spells them, the human reading and
+   the raw value side by side. */
+.telemetry {
+  margin: 0;
+  padding: 4px 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border-top: 0;
+}
+.telemetry > div {
+  background: var(--card);
+  padding: 9px 2px 9px 0;
+}
+
+.telemetry dt {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  color: var(--dimmer);
+  margin-bottom: 2px;
+}
+
+.telemetry dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.telemetry .raw {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--dimmer);
+}
+
+.telemetry .is-flag, .is-flag { color: var(--flag); }
+.telemetry .is-ok { color: var(--ok); }
+
+/* ─────────────  foot  ───────────── */
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding-top: 6px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--dimmer);
+}
+.foot .quiet { font-size: 0.68rem; }
+
+@media (max-width: 480px) {
+  .app { padding: 16px 12px 48px; }
+  .telemetry { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .board-mac { display: none; }
+}
+
+/* ─────────────  one gateway, at length  ───────────── */
+
+/* The telemetry grid paints its gutters by showing its own background through
+   1px gaps, which turns a row it cannot fill into a block of that background.
+   Inside a card the separators are rules on the cells instead, so a short last
+   row ends where its cells do. */
+.card > .telemetry {
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+.card > .telemetry > div {
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.card > .telemetry > div:last-child { border-bottom: 0; }
+
+.pip.is-out { background: var(--flag); }
+
+.note {
+  margin: 12px 0 0;
+  color: var(--dimmer);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+/* Each run as one line: how long it lasted, how it ended, when. Read down the
+   column and a supply that is getting worse is a column of shortening numbers. */
+.runs {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.runs li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.runs li:last-child { border-bottom: 0; }
+.runs li.is-bad .run-reason { color: var(--flag); }
+
+.run-length {
+  min-width: 78px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.run-reason { color: var(--dim); }
+.run-when { color: var(--dimmer); font-size: 0.72rem; }
+
+.trends {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 4px;
+}
+.trend { margin: 0; }
+.trend figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  color: var(--dimmer);
+  margin-bottom: 6px;
+}
+
+/* The gutter is the bounds' own column, so the line starts where they end. */
+.trend-plot {
+  position: relative;
+  padding-left: 52px;
+}
+.trend-area { position: relative; }
+
+.trend svg {
+  display: block;
+  width: 100%;
+  height: 38px;
+  overflow: visible;
+}
+.trend polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* On the pad the line keeps clear above and below its extremes, which is what
+   puts each figure level with the point it belongs to. */
+.trend-bounds {
+  position: absolute;
+  inset: 0;
+  width: 48px;
+  pointer-events: none;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--dimmer);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.trend-bounds span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+.trend-bounds .is-high { top: 12%; }
+.trend-bounds .is-low { top: 88%; }
+
+.trend-mark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1.5px solid var(--accent);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.trend-hit { position: absolute; inset: 0; }
+
+/* Wide, and narrower than it is on a phone, so it scrolls inside its own box
+   rather than making the page do it. */
+.scroller {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+
+.pings {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.pings th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--dimmer);
+  letter-spacing: 0.03em;
+  padding: 0 12px 7px 0;
+  border-bottom: 1px solid var(--line-firm);
+}
+.pings td {
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pings tr:last-child td { border-bottom: 0; }
+/* The first ping of a run: the board reporting in before its interval had come
+   round once, which is the row a reset is read from. */
+.pings tr.is-boot td { background: var(--well); }
+
+/* The whole row is the way in to one board, so the name is a link and the card
+   says so on hover. */
+.board-open {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.board-open:hover { border-bottom-color: var(--line-firm); }

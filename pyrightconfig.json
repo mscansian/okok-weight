@@ -1,0 +1,8 @@
+{
+  "include": ["server/scale_server", "server/tests"],
+  "extraPaths": ["server"],
+  "venvPath": "server",
+  "venv": ".venv",
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "standard"
+}

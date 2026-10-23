@@ -1,0 +1,5 @@
+# arduino-cli writes its output beside the sketch it built.
+*/build/
+
+# Host-built firmware tests.
+build/

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>gateways &mdash; okok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=__ASSETS__">
+<script src="/static/format.js?v=__ASSETS__"></script>
+<script src="/static/devices.js?v=__ASSETS__"></script>
+<script defer src="/static/vendor/alpine.min.js?v=__ASSETS__"></script>
+</head>
+<body>
+
+<main class="app is-technical" x-data="gateways" x-cloak>
+
+  <nav class="topbar">
+    <a class="tab" href="/">&larr; weight</a>
+    <span class="grow"></span>
+    <span class="rig-count" x-show="devices.length">
+      <span x-text="reporting"></span>/<span x-text="devices.length"></span> reporting
+    </span>
+  </nav>
+
+  <div class="alert" x-show="problem" x-transition.opacity role="alert">
+    <p x-text="problem"></p>
+    <button type="button" @click="problem = null" aria-label="dismiss">&times;</button>
+  </div>
+
+  <header class="rig-intro">
+    <h1>gateways</h1>
+    <p>
+      One board per row, holding whatever its last ping said. This is the view
+      the serial console gives over a cable, for boards that do their job without
+      one. Every field but the name is the board's own report of itself, which
+      the next ping overwrites &mdash; follow a board's address for the pings it
+      overwrote, and the runs they add up to.
+    </p>
+  </header>
+
+  <template x-for="device in devices" :key="device.address">
+    <article class="board" :class="device.online ? 'is-live' : 'is-dark'">
+
+      <div class="board-top">
+        <span class="pip" :title="device.online ? 'reporting' : 'not heard from'"></span>
+
+        <!-- The name is the only field a ping leaves alone, so it is the only
+             one this page can set. -->
+        <template x-if="editing !== device.address">
+          <button type="button" class="board-name" @click="edit(device)"
+                  :title="'rename ' + device.address">
+            <span :class="device.name ? '' : 'is-unnamed'"
+                  x-text="device.name || 'name this board'"></span>
+          </button>
+        </template>
+
+        <template x-if="editing === device.address">
+          <form class="rename" @submit.prevent="save(device)">
+            <input type="text" x-model="draft" maxlength="64" x-ref="field"
+                   placeholder="where it sits" autocomplete="off"
+                   @keydown.escape="cancel()"
+                   x-init="$nextTick(() => $refs.field.focus())">
+            <button type="submit" :disabled="saving" x-text="saving ? '&hellip;' : 'save'"></button>
+            <button type="button" class="quiet" @click="cancel()">cancel</button>
+          </form>
+        </template>
+
+        <span class="grow"></span>
+        <!-- The way in to one board's own page, which is where the pings behind
+             this row are. The name beside it is a rename, so the address is what
+             carries the link. -->
+        <a class="board-open" :href="'/devices/' + device.address"
+           :title="'everything ' + device.address + ' has reported'">
+          <code class="board-mac" x-text="device.address"></code>
+        </a>
+      </div>
+
+      <dl class="telemetry">
+        <div>
+          <dt>state</dt>
+          <dd :class="device.online ? 'is-ok' : 'is-flag'"
+              x-text="device.online ? 'online' : 'silent'"></dd>
+        </div>
+        <div>
+          <dt>last_seen</dt>
+          <dd :title="full(device.last_seen_at)" x-text="ago(device.last_seen_at)"></dd>
+        </div>
+        <div>
+          <dt>first_seen</dt>
+          <dd :title="full(device.first_seen_at)" x-text="ago(device.first_seen_at)"></dd>
+        </div>
+        <div>
+          <dt>scale_addresses</dt>
+          <dd :class="device.scale_addresses?.length ? '' : 'is-flag'"
+              x-text="device.scale_addresses?.length ? device.scale_addresses.join(' ') : 'unset'"></dd>
+        </div>
+        <!-- Non-zero says weigh-ins exist that the history has not got. -->
+        <div>
+          <dt>queued</dt>
+          <dd :class="device.queued ? 'is-flag' : ''" x-text="device.queued"></dd>
+        </div>
+        <div>
+          <dt>uptime_ms</dt>
+          <dd>
+            <span x-text="duration(device.uptime_ms)"></span>
+            <span class="raw" x-text="device.uptime_ms.toLocaleString()"></span>
+          </dd>
+        </div>
+        <div>
+          <dt>reset_reason</dt>
+          <dd x-text="device.reset_reason"></dd>
+        </div>
+        <!-- The reason names the last boot; the tally is what turns a sagging
+             supply into a rate rather than an anecdote. -->
+        <div>
+          <dt>boots / brownouts</dt>
+          <dd>
+            <span x-text="device.boots"></span>
+            <span class="raw">/</span>
+            <span :class="device.brownouts ? 'is-flag' : ''" x-text="device.brownouts"></span>
+          </dd>
+        </div>
+        <!-- A POST needs its share of the heap in one piece, so the largest
+             block is what a gateway runs out of first. -->
+        <div>
+          <dt>largest_free_block</dt>
+          <dd>
+            <span x-text="kb(device.largest_free_block)"></span>
+            <span class="raw" x-text="device.largest_free_block.toLocaleString() + ' B'"></span>
+          </dd>
+        </div>
+        <div>
+          <dt>free_heap</dt>
+          <dd>
+            <span x-text="kb(device.free_heap)"></span>
+            <span class="raw" x-text="device.free_heap.toLocaleString() + ' B'"></span>
+          </dd>
+        </div>
+        <div>
+          <dt>ssid / rssi</dt>
+          <dd>
+            <span x-text="device.ssid || 'unknown'"></span>
+            <span class="raw" x-show="device.wifi_rssi !== null"
+                  x-text="device.wifi_rssi + ' dBm'"></span>
+          </dd>
+        </div>
+        <div>
+          <dt>client_ip</dt>
+          <dd x-text="device.client_ip || 'unknown'"></dd>
+        </div>
+        <div>
+          <dt>interval_ms</dt>
+          <dd>
+            <span x-text="duration(device.interval_ms)"></span>
+            <span class="raw" x-text="device.interval_ms.toLocaleString()"></span>
+          </dd>
+        </div>
+        <div>
+          <dt>firmware_version</dt>
+          <dd x-text="device.firmware_version"></dd>
+        </div>
+      </dl>
+    </article>
+  </template>
+
+  <p class="blank" x-show="!loading && !devices.length">
+    No gateway has pinged yet. A board puts itself here the first time it
+    reports, so there is nothing to register by hand.
+  </p>
+
+  <footer class="foot">
+    <span x-show="loading">loading&hellip;</span>
+    <span x-show="!loading" x-text="'updated ' + stamp(checkedAt)"></span>
+    <a class="quiet" href="/docs">api</a>
+  </footer>
+
+</main>
+</body>
+</html>
