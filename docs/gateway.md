@@ -9,38 +9,39 @@ make monitor
 make firmware-test  # decodes the spec's reference payloads, no board needed
 ```
 
-`make upload` reads the attached chip and flashes for it, so an ESP32, an
-ESP32-S3 and an ESP32-C3 all take the same command. `make compile` has no board
-to ask and builds for the plain ESP32; `make compile BOARD=esp32s3` targets
-another.
+`make upload` reads the chip on the other end of the cable and builds for it, so
+the same command works for an ESP32, an ESP32-S3 and an ESP32-C3. `make compile`
+has no board to read, so it builds for the plain ESP32. Use
+`make compile BOARD=esp32s3` to build for another chip.
 
 ### Building in the Arduino IDE
 
-`make` carries the board options in the FQBN, but the IDE does not read them.
-BLE and WiFi together need more than the 1.2 MB the board's default partition
-gives an application, so set **Tools -> Partition Scheme -> Minimal SPIFFS
-(1.9MB APP with OTA/128KB SPIFFS)**. Building against the default fails with
+`make` passes the board options in the FQBN, but the IDE ignores them. BLE and
+WiFi together need more than the 1.2 MB the default partition gives an
+application, so set **Tools -> Partition Scheme -> Minimal SPIFFS (1.9MB APP
+with OTA/128KB SPIFFS)**. With the default partition, the build fails with
 `text section exceeds available space in board`.
 
-On the S3 also set **Tools -> Flash Mode -> DIO 80MHz**. Its flash reads back
-`0xff` once the QIO bootloader takes it out of DIO, and a board that flashes and
-verifies then boot-loops on `Failed to verify partition table`.
+On the S3, also set **Tools -> Flash Mode -> DIO 80MHz**. Its flash reads back
+`0xff` once the QIO bootloader switches it out of DIO. The board flashes and
+verifies, then boot-loops on `Failed to verify partition table`.
 
 ## Provisioning
 
-The firmware carries no network settings, so the same image runs on any board.
-Settings are pushed over serial into NVS, where they survive reboots *and*
-reflashes — you provision once, not once per `make upload`.
+The firmware has no network settings built in, so the same image runs on any
+board. You send the settings over serial and the board stores them in NVS. They
+survive reboots and reflashes, so you provision a board once, not after every
+`make upload`.
 
-`make provision` takes these from the environment:
+`make provision` reads these from the environment:
 
 | Variable | Required | Example | What it is |
 |---|---|---|---|
 | `WIFI_SSID` | yes | `your-network` | the network the gateway joins |
-| `WIFI_PASSWORD` | yes, but **leave unset** | — | its passphrase — see below |
-| `SERVER_URL` | yes | `https://scale.example.com` | where the server is, without a route on the end — the gateway posts weigh-ins and pings to different ones. Must be reachable *from the gateway* — never `localhost`. `https://` encrypts the body without verifying the certificate, `http://` suits a server on the LAN |
-| `SCALE_GATEWAY_KEY` | yes, but **leave unset** | — | the key deliveries are signed with — see below |
-| `SCALE_ADDRESSES` | yes | `AA:BB:CC:DD:EE:FF` | which scales to listen for, up to four separated by spaces. Full MAC or just its last five octets; colons or dashes, any case |
+| `WIFI_PASSWORD` | yes, but **leave unset** | — | the network's passphrase (see below) |
+| `SERVER_URL` | yes | `https://scale.example.com` | where the server is, with no route on the end. The gateway posts weigh-ins and pings to different routes. The gateway must be able to reach it, so never use `localhost`. With `https://` the body is encrypted but the certificate is not verified. `http://` is fine for a server on the LAN |
+| `SCALE_GATEWAY_KEY` | yes, but **leave unset** | — | the key the gateway signs deliveries with (see below) |
+| `SCALE_ADDRESSES` | yes | `AA:BB:CC:DD:EE:FF` | the scales to listen for, up to four, separated by spaces. Use the full MAC or only its last five octets, with colons or dashes, in any case |
 
 ```
 export WIFI_SSID='your-network'
@@ -49,84 +50,85 @@ export SCALE_ADDRESSES='AA:BB:CC:DD:EE:FF 08:B8:D0:12:34:56'
 make provision
 ```
 
-One gateway serves every scale in radio range of it, and a weigh-in carries the
-address of the scale it was taken on, so two scales through one board stay two
-histories. A scale that is not on the list is ignored — including another of the
-same model next door, which broadcasts a perfectly valid reading that this board
-has no business recording.
+One gateway can serve every scale within radio range. Each weigh-in carries the
+address of the scale it was taken on, so two scales on one board keep separate
+histories. The gateway ignores any scale that is not on the list. That includes
+the same model next door, which broadcasts valid readings that don't belong in
+your history.
 
-Anything left unset is prompted for instead. **Leave `WIFI_PASSWORD` and
-`SCALE_GATEWAY_KEY` unset on purpose:** their prompts do not echo, so neither
-secret enters your shell history, lands in a file, or reaches a command line.
-Exporting them works, but then they live in your history and in whatever file
-exported them.
+`make provision` prompts for anything left unset. **Leave `WIFI_PASSWORD` and
+`SCALE_GATEWAY_KEY` unset on purpose.** Their prompts don't echo, so neither
+secret ends up in your shell history, in a file or on a command line. Exporting
+them works too, but then they sit in your history and in whatever file exported
+them.
 
-`SCALE_GATEWAY_KEY` is the one secret both halves need — the server verifies
-with the same value, under the same name. Generate one with
-`openssl rand -hex 32`, and keep it somewhere you can paste it from twice.
+The gateway and the server both need `SCALE_GATEWAY_KEY`, under the same name.
+The server uses it to check signatures. Generate one with
+`openssl rand -hex 32` and keep it somewhere you can paste it from twice.
 
-`make show` prints what is stored, withholding both secrets. `make ping` makes
-the board report to the server now and prints the round trip; it does that on its
-own every five minutes anyway, and immediately whenever the link comes up or the
-url changes.
+`make show` prints the stored settings, without the two secrets. `make ping`
+makes the board report to the server right away and prints the round trip. The
+board also pings on its own every five minutes, and right away when the link
+comes up or the url changes.
 
-The same settings can be typed by hand over `make monitor`: `network`,
-`passphrase`, `url`, `key`, `scale`, `ping`, `show`, `connect`, `forget`. Everything
-after the command word is taken verbatim, so spaces need no quoting.
+You can also type the settings by hand in `make monitor`, using `network`,
+`passphrase`, `url`, `key`, `scale`, `ping`, `show`, `connect` and `forget`. The
+board takes everything after the command word as is, so values with spaces need
+no quotes.
 
 ## Keeping the board cool enough to stay up
 
-The gateway holds no state it cannot rebuild, so the cost of a reset is the
-weigh-ins still queued — but a board that resets because its supply sagged does
-it again a few hours later. The firmware's part in that is the current it draws
-while doing nothing, because that is what heats the regulator all day:
+The gateway keeps no state it cannot rebuild, so a reset only loses the
+weigh-ins still in the queue. But a board that resets because its supply sagged
+will usually do it again a few hours later. On the firmware side, what matters
+is the current the board draws while idle, because that heats the regulator all
+day:
 
 | Setting | What it trades |
 |---|---|
-| `WIFI_POWER_SAVE` | how much of the time between the access point's beacons the WiFi radio spends parked. Waking for each beacon costs the most current of the modes that park at all, and makes the step out of the parked state the smallest; sleeping through beacons inverts both, and adds up to the listen interval to the inbound half of a POST, which `age_ms` keeps out of the history entirely |
-| `CPU_FREQUENCY_MHZ` | the clock the board runs at, which it holds for its whole life. Nothing between weigh-ins is compute-bound, so what this costs is arithmetic: the TLS handshake, whose round trip every ping reports. 80 MHz is the floor — below it the radios stop running and the peripheral bus stops being 80 MHz, so the console's baud rate and the timers lose their divisors |
-| `IDLE_SCAN_INTERVAL_MS` | how often the BLE receiver listens while nobody is on the scale, which is nearly all the time. Costs joining a weigh-in a little after it starts. It cannot cost a *different* weight: the receiver goes continuous the moment it hears a lock, so the end of a weigh-in — the part the reported weight comes from — is never sampled |
+| `WIFI_POWER_SAVE` | how much of the time between the access point's beacons the WiFi radio spends parked. Waking for every beacon draws the most current of the parking modes, and makes the smallest jump in current when the radio wakes. Sleeping through beacons does the opposite on both counts. It also delays the inbound half of a POST by up to the listen interval, but `age_ms` keeps that delay out of the history |
+| `CPU_FREQUENCY_MHZ` | the clock speed, fixed for the board's whole run. Nothing between weigh-ins is compute-bound, so a lower clock only slows the TLS handshake, and every ping reports that round trip. 80 MHz is the floor. Below it the radios stop working and the peripheral bus drops below 80 MHz, so the console's baud rate and the timers lose their divisors |
+| `IDLE_SCAN_INTERVAL_MS` | how often the BLE receiver listens while nobody is on the scale, which is nearly all the time. A longer interval means joining a weigh-in a little after it starts. It can't produce a different weight: once the receiver hears a lock it listens continuously, so it never misses the end of a weigh-in, which is where the reported weight comes from |
 
-Both scan constants are held to the scale's own behaviour by `static_assert`, so
-listening too rarely to catch a broadcast, or declaring a weigh-in settled
-between two listens, is a build error rather than a quietly light reading.
+A `static_assert` ties both scan constants to how the scale behaves. If the
+receiver would listen too rarely to catch a broadcast, or could call a weigh-in
+settled between two listens, the build fails. Without that check, the gateway
+would quietly report weights that are too light.
 
-Firmware is only half of it. A brownout means the 3V3 rail went below roughly
-2.43 V, which is well under the voltage the ESP32 needs, so the regulator is
-collapsing rather than merely drooping — usually a dev board's own LDO with a
-long USB cable and no bulk capacitance behind it. Feeding 3V3 directly from a
-supply with headroom fixes more than any of the above.
+The firmware is only half of the fix. A brownout means the 3V3 rail dropped
+below about 2.43 V. That is far below what the ESP32 needs, so the regulator is
+collapsing, not just sagging. The usual cause is a dev board's own LDO on a long
+USB cable with no bulk capacitance. Feeding 3V3 directly from a supply with
+headroom helps more than any of the settings above.
 
-`GET /api/v1/devices` is where you find out whether any of it worked: `brownouts`
-against `boots`. The `locks` on a recorded weigh-in is the other half of the
-answer — it says whether the receiver is still hearing weigh-ins whole.
+To see whether any of this worked, compare `brownouts` with `boots` in
+`GET /api/v1/devices`. The `locks` count on each recorded weigh-in tells you
+whether the receiver still hears weigh-ins in full.
 
 ## When the link goes down
 
-A weigh-in taken while the network is down is held rather than lost. The gateway
-queues it, retries every 30 s, and keeps trying for 24 hours before giving up on
-it — long enough to cover a router reboot or a night of ISP trouble, short enough
-that nothing lands in the history a day stale. Up to 64 weigh-ins wait at once;
-past that the oldest goes to make room. `make show` reports how many are waiting.
+If the network is down when someone weighs in, the gateway keeps the weigh-in.
+It queues it, retries every 30 s, and gives up after 24 hours. That covers a
+router reboot or a night of ISP trouble, and keeps day-old readings out of the
+history. Up to 64 weigh-ins can wait at once. When the queue is full, the oldest
+one is dropped. `make show` reports how many are waiting.
 
-Each delivery says how long ago the weigh-in was taken rather than when, and the
-server subtracts that from the arrival to time it. This is why: the ESP32's clock
-is not battery-backed, so a board that has just come up from a power cut does not
-know the date, and if the network is still down it has no way to ask. It can
-always answer how long ago something happened, from the moment it boots.
+Each delivery says how long ago the weigh-in happened, not when. The server
+subtracts that age from the arrival time. The ESP32's clock has no battery, so
+after a power cut the board doesn't know the date, and with the network down it
+can't ask. It always knows how long ago something happened, counting from boot.
 
-The queue lives in RAM, so a weigh-in still waiting when the board resets is
-gone. That trades a rarer failure — the board resetting mid-outage — for not
-writing to flash on every weigh-in, and for not having to timestamp readings the
-board took before it knew the time.
+The queue lives in RAM, so a reset loses any weigh-ins still waiting. That only
+happens if the board resets during an outage, which is rare. In exchange, the
+board doesn't write to flash on every weigh-in, and it never has to timestamp
+readings taken before it knew the time.
 
 ## When the link is up and the server is still unreachable
 
-A TLS session costs this board two 16 KB record buffers before a byte of it is
-about anything, and BLE and WiFi are holding their own memory the whole time. So
-https is where the gateway runs out of heap first, and it does not run out in a
-way that says so — an allocation that fails inside mbedTLS surfaces as a refused
-connection:
+A TLS session needs two 16 KB record buffers before it sends any data, and BLE
+and WiFi hold their own memory the whole time. So https is where the gateway
+runs out of heap first. The error doesn't say so: when an allocation fails
+inside mbedTLS, it shows up as a refused connection:
 
 ```
 tls: X509 - A fatal error occurred, eg the chain is too long or the vrfy callback failed
@@ -134,14 +136,14 @@ heap: 60020 free, largest block 34804, going in
 ping: … failed, status -1 (connection refused)
 ```
 
-The second number is the one that matters. Memory in pieces too small to use
-reads as free in every other measure, and a POST needs its share in one piece.
-Every ping carries `free_heap` and `largest_free_block` too, so the trend is
-readable from `GET /api/v1/devices` without a cable — though a ping that lands is a
-ping that found the room, which makes the console the place to watch a board
-that has stopped.
+Watch the second number, the largest free block. Memory split into pieces too
+small to use still counts as free everywhere else, and a POST needs its memory
+in one piece. Every ping also reports `free_heap` and `largest_free_block`, so
+you can follow the trend in `GET /api/v1/devices` without a cable. A ping only
+arrives if it found enough memory, though, so for a board that has stopped,
+watch the console instead.
 
-Two things buy the headroom. The Bluetooth Classic half of the controller goes
-back to the heap before BLE starts, this gateway being a scanner that never uses
-it. And the certificate chain is not verified, which is the larger saving and is
-covered in [security](security.md).
+Two things free up memory. The firmware hands the Bluetooth Classic half of the
+controller back to the heap before BLE starts, because the gateway only scans
+and never uses it. And the gateway does not verify the certificate chain, which
+saves more. [Security](security.md) covers that trade.
