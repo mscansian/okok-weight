@@ -41,6 +41,16 @@ A board with no key says so at boot and doesn't post, because the server would
 reject every delivery. Weigh-ins taken in the meantime queue the same as during
 any outage, and go out once you set a key.
 
+## Who can read through MCP
+
+`/mcp` answers only a request with `Authorization: Bearer <token>` matching
+`SCALE_MCP_TOKEN`. Anything else gets `401`, and the server logs
+`mcp token rejected`. The token is one static secret for one person. To revoke
+it, change the variable and restart the server.
+
+The token only guards `/mcp`. Everything the tools return can also be read from
+the JSON routes below, which have no authentication.
+
 ## What is not protected
 
 The read routes have no authentication, so anyone with the URL can browse your

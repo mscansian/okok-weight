@@ -42,17 +42,15 @@ is down, it holds weigh-ins and sends them later.
 ## Quickstart
 
 You need [`arduino-cli`](https://arduino.github.io/arduino-cli/),
-[`uv`](https://docs.astral.sh/uv/) and Docker. Generate a key that the gateway
-and the server share:
+[`uv`](https://docs.astral.sh/uv/) and Docker. Generate two secrets with
+`openssl rand -hex 32`: a key that the gateway and the server share, and a
+token for agents reading the history over MCP.
 
-```
-openssl rand -hex 32
-```
-
-Start the server on a machine the gateway can reach. It asks for the key:
+Start the server on a machine the gateway can reach. It asks for both:
 
 ```
 read -rs SCALE_GATEWAY_KEY && export SCALE_GATEWAY_KEY
+read -rs SCALE_MCP_TOKEN && export SCALE_MCP_TOKEN
 make server-up
 ```
 

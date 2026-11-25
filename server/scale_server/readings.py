@@ -8,6 +8,7 @@ other kinds. This module is the only thing that has to know both spellings.
 """
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -95,3 +96,63 @@ def _from_row(row: sqlite3.Row) -> Reading:
         measured_at=datetime.fromisoformat(row["measured_at"]),
         recorded_at=datetime.fromisoformat(row["recorded_at"]),
     )
+
+
+@dataclass(frozen=True)
+class RangeSummary:
+    """The weights across every weigh-in in a range, however many of them a
+    caller was shown."""
+
+    count: int
+    lowest_kg: float
+    highest_kg: float
+    average_kg: float
+    earliest: Reading
+    latest: Reading
+
+
+def in_range(
+    connection: sqlite3.Connection, start: datetime, end: datetime, limit: int, address: str | None = None
+) -> list[Reading]:
+    """Weigh-ins measured from `start` to `end`, both included, most recent first."""
+    where, params = _range_filter(start, end, address)
+    rows = connection.execute(
+        f"SELECT {_COLUMNS} FROM readings WHERE {where} ORDER BY measured_at DESC, id DESC LIMIT ?", (*params, limit)
+    ).fetchall()
+    return [_from_row(row) for row in rows]
+
+
+def range_summary(
+    connection: sqlite3.Connection, start: datetime, end: datetime, address: str | None = None
+) -> RangeSummary | None:
+    """None when no weigh-in falls in the range."""
+    where, params = _range_filter(start, end, address)
+    count, lowest, highest, average = connection.execute(
+        f"SELECT COUNT(*), MIN(weight_kg), MAX(weight_kg), AVG(weight_kg) FROM readings WHERE {where}", params
+    ).fetchone()
+    if count == 0:
+        return None
+
+    earliest = connection.execute(
+        f"SELECT {_COLUMNS} FROM readings WHERE {where} ORDER BY measured_at, id LIMIT 1", params
+    ).fetchone()
+    latest = connection.execute(
+        f"SELECT {_COLUMNS} FROM readings WHERE {where} ORDER BY measured_at DESC, id DESC LIMIT 1", params
+    ).fetchone()
+    return RangeSummary(
+        count=count,
+        lowest_kg=lowest,
+        highest_kg=highest,
+        average_kg=average,
+        earliest=_from_row(earliest),
+        latest=_from_row(latest),
+    )
+
+
+def _range_filter(start: datetime, end: datetime, address: str | None) -> tuple[str, tuple[str, ...]]:
+    """The stored timestamps are fixed-width UTC text, so the bounds are written
+    the same way and compared as text."""
+    bounds = (start.astimezone(UTC).strftime(TIMESTAMP_FORMAT), end.astimezone(UTC).strftime(TIMESTAMP_FORMAT))
+    if address is None:
+        return "measured_at BETWEEN ? AND ?", bounds
+    return "measured_at BETWEEN ? AND ? AND scale_address = ?", (*bounds, address)

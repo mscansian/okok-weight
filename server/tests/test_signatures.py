@@ -4,12 +4,12 @@ import json
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from starlette.requests import Request
 
 from scale_server import signatures
 from scale_server.config import Settings
-from tests.conftest import GATEWAY_ADDRESS, GATEWAY_KEY, Delivery, PingBuilder, WeighInBuilder
+from tests.conftest import GATEWAY_ADDRESS, GATEWAY_KEY, MCP_TOKEN, Delivery, PingBuilder, WeighInBuilder
 
 
 def test_given_a_request_when_signed_then_the_digest_is_the_agreed_one() -> None:
@@ -135,4 +135,4 @@ def test_given_a_ping_signed_for_one_gateway_when_replayed_at_another_then_it_is
 
 def test_given_a_key_too_short_to_be_a_secret_when_the_server_starts_then_it_refuses() -> None:
     with pytest.raises(ValidationError):
-        Settings(db_path="weights.db", gateway_key="hunter2")  # pyright: ignore[reportArgumentType]
+        Settings(db_path="weights.db", gateway_key="hunter2", mcp_token=SecretStr(MCP_TOKEN))  # pyright: ignore[reportArgumentType]

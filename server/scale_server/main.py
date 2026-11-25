@@ -13,7 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from scale_server import database, devices, logs, middleware, readings, web
+from scale_server import database, devices, logs, mcp_server, middleware, monitoring, readings, web
 from scale_server.config import Settings, load_settings
 from scale_server.middleware import client_ip
 from scale_server.models import (
@@ -58,12 +58,16 @@ Connection = Annotated[sqlite3.Connection, Depends(open_connection)]
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
+    agent_server, agent_route = mcp_server.build(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         database.migrate(settings.db_path)
-        log.info("server ready", extra={"db_path": str(settings.db_path)})
-        yield
+        # The MCP route sits inside this app, which never runs a mounted app's
+        # own lifespan, so this one runs its session manager.
+        async with agent_server.session_manager.run():
+            log.info("server ready", extra={"db_path": str(settings.db_path)})
+            yield
 
     app = FastAPI(
         title="okok-weight",
@@ -244,6 +248,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # server's own front door rather than part of the API a gateway speaks to.
     app.include_router(web.router)
     app.mount("/static", web.assets, name="static")
+
+    app.router.routes.append(agent_route)
     return app
 
 
@@ -251,6 +257,7 @@ def run() -> None:
     settings = load_settings()
     log_config = logs.logging_config(settings.log_level)
     logging.config.dictConfig(log_config)
+    monitoring.start(settings)
     uvicorn.run(
         create_app(settings),
         host=settings.host,

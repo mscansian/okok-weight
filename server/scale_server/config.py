@@ -3,12 +3,12 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SCALE_", frozen=True)
+    model_config = SettingsConfigDict(env_prefix="SCALE_", frozen=True, env_ignore_empty=True)
 
     # No default: a writable fallback would put the weigh-in history somewhere
     # the operator did not choose, and a container would take it to the grave.
@@ -18,7 +18,15 @@ class Settings(BaseSettings):
     # port is not enough to write to the weigh-in history. No default: a key the
     # server picked for itself would admit anyone who knew what it picks. The
     # floor is a length worth calling a secret — `openssl rand -hex 32`.
-    gateway_key: str = Field(min_length=32)
+    gateway_key: SecretStr = Field(min_length=32)
+
+    # The bearer token an MCP client sends to read the history through /mcp. No
+    # default for the same reason as the gateway key, and the same floor.
+    mcp_token: SecretStr = Field(min_length=32)
+
+    # Where errors, logs and traces go. Unset turns error monitoring off, which is
+    # what a checkout running tests or a local server wants.
+    sentry_dsn: str | None = None
 
     host: str = "0.0.0.0"
     port: int = Field(default=8080, ge=1, le=65535)

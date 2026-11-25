@@ -61,7 +61,10 @@ def request_target(request: Request) -> bytes:
 async def verify_signature(request: Request) -> None:
     """Turns away a request whose signature is missing, malformed or wrong."""
     expected = sign(
-        request.app.state.settings.gateway_key, request.method, request_target(request), await request.body()
+        request.app.state.settings.gateway_key.get_secret_value(),
+        request.method,
+        request_target(request),
+        await request.body(),
     )
     offered = request.headers.get(SIGNATURE_HEADER, "")
 

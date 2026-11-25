@@ -1,10 +1,11 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from scale_server.config import Settings
 from scale_server.main import create_app
-from tests.conftest import GATEWAY_ADDRESS, GATEWAY_KEY, Delivery, PingBuilder, WeighInBuilder, deliver
+from tests.conftest import GATEWAY_ADDRESS, GATEWAY_KEY, MCP_TOKEN, Delivery, PingBuilder, WeighInBuilder, deliver
 
 
 def test_given_no_request_id_when_a_request_is_made_then_one_is_returned(client: TestClient) -> None:
@@ -34,7 +35,12 @@ def test_given_an_oversized_body_when_posted_then_it_is_refused(post: Delivery, 
 def test_given_the_rate_limit_is_reached_when_posting_again_then_it_is_refused(
     device_ping: PingBuilder, tmp_path: Path
 ) -> None:
-    settings = Settings(db_path=tmp_path / "weights.db", gateway_key=GATEWAY_KEY, rate_limit_per_minute=2)
+    settings = Settings(
+        db_path=tmp_path / "weights.db",
+        gateway_key=SecretStr(GATEWAY_KEY),
+        mcp_token=SecretStr(MCP_TOKEN),
+        rate_limit_per_minute=2,
+    )
     path = f"/api/v1/devices/{GATEWAY_ADDRESS}/ping"
 
     with TestClient(create_app(settings)) as limited:
@@ -98,7 +104,12 @@ def test_given_two_callers_behind_one_proxy_when_the_limit_is_reached_then_it_is
 ) -> None:
     """The point of reading the header: behind a proxy every request has the
     same peer, so without it one caller\'s traffic spends the gateway\'s."""
-    settings = Settings(db_path=tmp_path / "weights.db", gateway_key=GATEWAY_KEY, rate_limit_per_minute=1)
+    settings = Settings(
+        db_path=tmp_path / "weights.db",
+        gateway_key=SecretStr(GATEWAY_KEY),
+        mcp_token=SecretStr(MCP_TOKEN),
+        rate_limit_per_minute=1,
+    )
     path = f"/api/v1/devices/{GATEWAY_ADDRESS}/ping"
 
     with TestClient(create_app(settings)) as proxied:

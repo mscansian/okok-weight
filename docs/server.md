@@ -43,6 +43,7 @@ curl localhost:8080/api/v1/readings
 | `GET /api/v1/devices/{address}` | one gateway |
 | `PUT /api/v1/devices/{address}` | sets the board's name |
 | `GET /api/v1/health` | responds only after SQLite does |
+| `POST /mcp` | the MCP endpoint for agents, see below |
 
 Every route is under `/api/v1`. The gateway has that prefix built in instead of
 reading it from the stored url, so `url` is just the server's host. To move a
@@ -186,12 +187,53 @@ address only feeds a rate limit and a log line. Nothing gets in because of it:
 weigh-ins and pings get in by their signature, whatever address they come from.
 A header value that isn't an address is logged and skipped.
 
+## Asking an agent
+
+`/mcp` is an MCP server, so an agent can read your weight and the gateways
+without the web page. It needs the token in `SCALE_MCP_TOKEN`, sent as
+`Authorization: Bearer <token>`. To add it to Claude Code:
+
+```
+claude mcp add --transport http okok-weight https://scale.example.com/mcp \
+  --header "Authorization: Bearer $SCALE_MCP_TOKEN"
+```
+
+| Tool | What it answers |
+|---|---|
+| `get_latest_weigh_in` | the last weight and when it was measured |
+| `list_weigh_ins` | the weigh-ins between two datetimes, newest first, plus the lowest, highest and average across the whole range |
+| `list_devices` | every gateway, whether it is online, and its last ping |
+| `get_device` | everything one gateway last reported |
+
+`list_weigh_ins` returns at most 200 weigh-ins. When a range holds more, it
+says `truncated` and gives the `total`, and the summary still covers all of
+them. Every datetime in and out carries its offset, and the tools reject one
+without it. The two weigh-in tools take an optional `scale_address` for a
+household with more than one scale.
+
+The server is stateless, so a restart doesn't break an agent's open
+conversation. All four tools only read.
+
+## Errors, logs and traces
+
+With `SCALE_SENTRY_DSN` set, the server sends to Sentry:
+
+- every log line from `INFO` up, as a log,
+- every line from `ERROR` up and every crash, as an issue,
+- a trace of every request, except the health check that the container runs
+  every 30 seconds.
+
+Request bodies and MCP tool arguments and results stay out of Sentry. Without
+the DSN, nothing is sent.
+
 ## Configuration
 
 | Variable | Required | Default | What it is |
 |---|---|---|---|
 | `SCALE_DB_PATH` | yes | — | where the SQLite file lives. It has no default on purpose, so the history never ends up somewhere you didn't choose |
 | `SCALE_GATEWAY_KEY` | yes | — | the key deliveries are signed with, the same one the gateway was provisioned with. At least 32 characters |
+| `SCALE_MCP_TOKEN` | yes | — | the bearer token MCP clients send to `/mcp`. At least 32 characters |
+| `SCALE_SENTRY_DSN` | no | — | the Sentry project errors, logs and traces go to. Unset, nothing is sent |
 | `SCALE_HOST` | no | `0.0.0.0` | interface to bind |
 | `SCALE_PORT` | no | `8080` | port to bind |
 | `SCALE_LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |

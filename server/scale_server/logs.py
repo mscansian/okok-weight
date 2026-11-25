@@ -57,5 +57,8 @@ def logging_config(level: str) -> dict[str, Any]:
             "uvicorn": {"handlers": ["stdout"], "level": level, "propagate": False},
             "uvicorn.error": {"handlers": ["stdout"], "level": level, "propagate": False},
             "uvicorn.access": {"handlers": [], "level": "CRITICAL", "propagate": False},
+            # The MCP SDK logs every stateless request opening and closing. Its
+            # warnings and errors are still worth a line.
+            "mcp": {"level": "WARNING"},
         },
     }

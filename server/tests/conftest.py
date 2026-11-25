@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from scale_server import signatures
 from scale_server.config import Settings
@@ -21,11 +22,17 @@ GATEWAY_ADDRESS = "a0:b7:65:12:34:56"
 # Long enough to satisfy the floor the server holds a real key to.
 GATEWAY_KEY = "0f6b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d"
 
+MCP_TOKEN = "9c1e4b7a2d5f8e0b3c6a9d2f5e8b1c4a7d0f3e6b9c2a5d8f1e4b7c0a3d6f9e2b"
+
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
-        db_path=tmp_path / "weights.db", gateway_key=GATEWAY_KEY, rate_limit_per_minute=1000, max_page_size=100
+        db_path=tmp_path / "weights.db",
+        gateway_key=SecretStr(GATEWAY_KEY),
+        mcp_token=SecretStr(MCP_TOKEN),
+        rate_limit_per_minute=1000,
+        max_page_size=100,
     )
 
 

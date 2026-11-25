@@ -5,7 +5,9 @@ description = "Receives weigh-ins from the scale gateway and stores them."
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
+    "mcp>=2.3",
     "pydantic-settings>=2.6",
+    "sentry-sdk>=3.0",
     "uvicorn[standard]>=0.32",
 ]
 
